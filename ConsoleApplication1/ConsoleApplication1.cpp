@@ -1,85 +1,15 @@
-#include <NIDAQmx.h>
-#include <iostream>
 #include <thread>
 #include <stdlib.h>
-#include <vector>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <tchar.h>
+#include "Utilities.hpp"
 
-void writeOutput(TaskHandle taskHandle, int delay, int duration) {
-    // Get the current time
-    auto start_time = std::chrono::high_resolution_clock::now();
-    // Loop until the timer duration is reached
-    while (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count() < delay) {
-        continue;
-    }
-    DAQmxWriteAnalogScalarF64(taskHandle, true, 5.0, 4.0, NULL);
+#pragma comment(lib, "ws2_32.lib")
 
-    // Get the current time
-    start_time = std::chrono::high_resolution_clock::now();
-    // Loop until the timer duration is reached
-    while (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count() < duration) {
-        continue;
-    }
-    // Set the voltage back to 0.0V
-    // Write the voltage to the AO port
-    DAQmxWriteAnalogScalarF64(taskHandle, true, 5.0, 0.0, NULL);
-}
-
-// forward declaration of Subject class
-class Subject;
-
-// Observer class
-class Observer {
-public:
-    virtual ~Observer() {}
-    virtual void update(Subject* subject) = 0;
-};
-
-// Subject class
-class Subject {
-public:
-    void attach(Observer* observer) {
-        observers_.push_back(observer);
-    }
-
-    void detach(Observer* observer) {
-        auto it = std::find(observers_.begin(), observers_.end(), observer);
-        if (it != observers_.end()) {
-            observers_.erase(it);
-        }
-    }
-
-    void notify() {
-        for (auto observer : observers_) {
-            observer->update(this);
-        }
-    }
-
-    void set_state() {
-        notify();
-    }
-
-    std::string get_state() const {
-        return state_;
-    }
-
-private:
-    std::vector<Observer*> observers_;
-    std::string state_;
-};
-
-// Concrete Observer class
-class ConcreteObserver : public Observer {
-public:
-    ConcreteObserver(TaskHandle handler, int delay, int duration) : handler_(handler), delay_(delay), duration_(duration) {}
-    void update(Subject* subject) override {
-        std::thread t(writeOutput, this->handler_, this->delay_, this->duration_);
-        t.join();
-    }
-private:
-    TaskHandle handler_;
-    int delay_;
-    int duration_;
-};
+#define localhost "127.0.0.1"
+#define port 8080
+#define bufferSize 200
 
 void writer()
 {
@@ -102,7 +32,7 @@ void writer()
         DAQmxWriteAnalogScalarF64(taskHandle, true, 5.0, 4.0, NULL);
 
 
-        const int timer_duration_ms = 100;
+        const int timer_duration_ms = 50;
         // Get the current time
         auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -144,7 +74,7 @@ void reader()
     DAQmxStartTask(taskHandle);
     DAQmxStartTask(output);
 
-    ConcreteObserver* obs = new ConcreteObserver(output, 10 ,45);
+    ConcreteObserver* obs = new ConcreteObserver(output, 10 ,30);
     Subject sub;
     sub.attach(obs);
 
@@ -167,12 +97,65 @@ void reader()
     DAQmxClearTask(taskHandle);
 }
 
-int main()
-{
+void startSession() {
     std::thread t1(writer);
     std::thread t2(reader);
 
     t1.join();
     t2.join();
-    return 0;
+}
+
+int main()
+{
+    startSession();
+    /*WSADATA wsaData;
+    WORD wVersionRequested = MAKEWORD(2, 2);
+    int wsaerr = WSAStartup(wVersionRequested, &wsaData);
+    if (wsaerr != 0) {
+        return -1;
+    }
+    SOCKET serverSocket = INVALID_SOCKET;
+    serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (serverSocket == INVALID_SOCKET) {
+        WSACleanup();
+        return -1;
+    }
+    sockaddr_in service;
+    service.sin_family = AF_INET;
+    InetPton(AF_INET, _T(localhost), &service.sin_addr.s_addr);
+    service.sin_port = htons(port);
+    if (bind(serverSocket, (SOCKADDR*)&service, sizeof(service)) == SOCKET_ERROR) {
+        closesocket(serverSocket);
+        WSACleanup();
+        return -1;
+    }
+    if (listen(serverSocket, 1) == SOCKET_ERROR) {
+        closesocket(serverSocket);
+        WSACleanup();
+        return -1;
+    }
+    SOCKET acceptSocket;
+    acceptSocket = accept(serverSocket, NULL, NULL);
+    if (acceptSocket == INVALID_SOCKET) {
+        closesocket(serverSocket);
+        WSACleanup();
+        return -1;
+    }
+    char receiveBuffer[bufferSize] = "";
+    while (true) {
+        int byteCount = recv(acceptSocket, receiveBuffer, bufferSize, 0);
+        if (byteCount == SOCKET_ERROR) {
+            break;
+        }
+        if (byteCount > 0) {
+            if (receiveBuffer[0] == 'a') {
+                break;
+            }
+            else {
+                std::cout << receiveBuffer << std::endl;
+            }
+        }
+    }
+    closesocket(serverSocket);
+    WSACleanup();*/
 }
